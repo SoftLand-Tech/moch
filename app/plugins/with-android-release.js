@@ -10,6 +10,9 @@
 //   3. expo-updates gets the same ndkVersion — its build.gradle never sets
 //      one, so AGP falls back to its compiled-in default and CXX1101s on the
 //      stub above
+//   4. FCM wiring: the google-services gradle plugin + classpath and the
+//      android-app apply, so expo-notifications can mint FCM tokens (the
+//      config file itself is committed at android/app/google-services.json)
 const {
   withAppBuildGradle,
   withProjectBuildGradle,
@@ -96,6 +99,29 @@ ${RELEASE_SIGNING_CONFIG_BLOCK}        debug {`
   config = withProjectBuildGradle(config, (cfg) => {
     if (!cfg.modResults.contents.includes(":expo-updates")) {
       cfg.modResults.contents += PROJECT_GRADLE_OVERRIDE;
+    }
+    // FCM: the google-services gradle plugin reads
+    // android/app/google-services.json at build time; expo-notifications
+    // needs it to register with FCM and mint Expo push tokens.
+    if (!cfg.modResults.contents.includes("com.google.gms.google-services")) {
+      cfg.modResults.contents = cfg.modResults.contents.replace(
+        /dependencies \{/,
+        `dependencies {
+        classpath("com.google.gms:google-services:4.4.2")
+`
+      );
+    }
+    return cfg;
+  });
+
+  config = withAppBuildGradle(config, (cfg) => {
+    // FCM: apply the plugin after the android-application plugin. Idempotent
+    // across prebuild regenerations.
+    if (!cfg.modResults.contents.includes("com.google.gms.google-services")) {
+      cfg.modResults.contents = cfg.modResults.contents.replace(
+        'apply plugin: "com.facebook.react"',
+        'apply plugin: "com.facebook.react"\napply plugin: "com.google.gms.google-services"'
+      );
     }
     return cfg;
   });
